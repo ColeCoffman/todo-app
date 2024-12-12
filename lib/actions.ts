@@ -1,7 +1,8 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { createSession } from "@/lib/session";
+import { createSession, deleteSession, getSession } from "@/lib/session";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 interface LoginState {
@@ -55,6 +56,8 @@ export async function login(
     }
 
     await createSession(user.id);
+    // console.log("Created session for user:", user.id);
+
     return {
       success: true,
     };
@@ -127,4 +130,90 @@ export async function register(
   }
 }
 
-export async function logout() {}
+export async function logout() {
+  await deleteSession();
+  redirect("/login");
+}
+
+export async function getTasks() {
+  const session = await getSession();
+  if (!session || !session.userId) return null;
+
+  try {
+    const tasks = await db.getTasks(session.userId);
+    return tasks;
+  } catch (error) {
+    console.error("Error fetching tasks:", error);
+    return null;
+  }
+}
+
+export async function createTask(text: string, categoryId?: string) {
+  const session = await getSession();
+  if (!session?.userId) return null;
+
+  try {
+    const task = await db.createTask(session.userId, text, categoryId);
+    revalidatePath("/dashboard");
+    return task;
+  } catch (error) {
+    console.error("Error creating task:", error);
+    return null;
+  }
+}
+
+export async function getCategories() {
+  const session = await getSession();
+  if (!session?.userId) return null;
+
+  try {
+    const categories = await db.getCategories(session.userId);
+    return categories;
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+    return null;
+  }
+}
+
+export async function createCategory(name: string, color: string) {
+  const session = await getSession();
+  if (!session?.userId) return null;
+
+  try {
+    const category = await db.createCategory(session.userId, name, color);
+    revalidatePath("/dashboard");
+    return category;
+  } catch (error) {
+    console.error("Error creating category:", error);
+    return null;
+  }
+}
+
+export async function updateTask(
+  taskId: string,
+  updates: { completed?: boolean }
+) {
+  const session = await getSession();
+  if (!session?.userId) return null;
+
+  try {
+    const task = await db.updateTask(taskId, session.userId, updates);
+    return task;
+  } catch (error) {
+    console.error("Error updating task:", error);
+    return null;
+  }
+}
+
+export async function deleteTask(taskId: string) {
+  const session = await getSession();
+  if (!session?.userId) return null;
+
+  try {
+    const success = await db.deleteTask(taskId, session.userId);
+    return success;
+  } catch (error) {
+    console.error("Error deleting task:", error);
+    return null;
+  }
+}
