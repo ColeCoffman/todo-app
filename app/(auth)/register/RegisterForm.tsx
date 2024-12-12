@@ -6,9 +6,17 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { register } from "@/lib/actions";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export function RegisterForm() {
-  const [state, registerAction] = useFormState(register, undefined);
+  const [state, registerAction] = useFormState(register, {});
+  const router = useRouter();
+
+  // Redirect when registration is successful
+  if (state.success) {
+    router.push("/login");
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-bl from-pink-500 to-purple-600">

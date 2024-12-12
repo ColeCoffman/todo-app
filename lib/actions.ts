@@ -4,6 +4,9 @@ import { db } from "@/lib/db";
 import { createSession, deleteSession, getSession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { api } from "@/lib/api";
+import { ApiError } from "@/lib/api";
+import { cookies } from "next/headers";
 
 interface LoginState {
   errors?: {
@@ -15,10 +18,10 @@ interface LoginState {
 
 interface RegisterState {
   errors?: {
-    first_name?: string[];
-    last_name?: string[];
     email?: string[];
     password?: string[];
+    first_name?: string[];
+    last_name?: string[];
   };
   success?: boolean;
 }
@@ -30,42 +33,38 @@ export async function login(
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
 
-  // Basic validation
-  const errors: LoginState["errors"] = {};
-
-  if (!email) {
-    errors.email = ["Email is required"];
-  }
-  if (!password) {
-    errors.password = ["Password is required"];
-  }
-
-  if (Object.keys(errors).length > 0) {
-    return { errors };
+  if (!email || !password) {
+    return {
+      errors: {
+        email: !email ? ["Email is required"] : undefined,
+        password: !password ? ["Password is required"] : undefined,
+      },
+    };
   }
 
   try {
-    const user = await db.verifyCredentials(email, password);
+    const response = await fetch("http://nginx/api/v1/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
+    });
 
-    if (!user) {
-      return {
-        errors: {
-          email: ["Invalid email or password"],
-        },
-      };
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new ApiError(response.status, data.error || "Login failed");
     }
 
-    await createSession(user.id);
-    // console.log("Created session for user:", user.id);
+    await createSession(data.user.id);
 
-    return {
-      success: true,
-    };
-  } catch (error) {
-    console.error("Login error:", error);
+    return { success: true };
+  } catch (err) {
+    console.error("Login error:", err);
     return {
       errors: {
-        email: ["An error occurred during login"],
+        email: [(err as Error).message || "An unexpected error occurred"],
       },
     };
   }
@@ -80,53 +79,34 @@ export async function register(
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
 
-  // Basic validation
-  const errors: RegisterState["errors"] = {};
-
-  if (!first_name) errors.first_name = ["First name is required"];
-  if (!last_name) errors.last_name = ["Last name is required"];
-  if (!email) errors.email = ["Email is required"];
-  if (!password) errors.password = ["Password is required"];
-  if (password && password.length < 8) {
-    errors.password = ["Password must be at least 8 characters"];
-  }
-
-  if (Object.keys(errors).length > 0) {
-    return { errors };
-  }
-
   try {
-    // Check if user already exists
-    const existingUser = await db.getUserByEmail(email);
-    if (existingUser) {
-      return {
-        errors: {
-          email: ["Email already in use"],
-        },
-      };
-    }
-
-    await db.createUser({
-      first_name,
-      last_name,
-      email,
-      password,
+    const response = await fetch("http://nginx/api/v1/auth/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        first_name,
+        last_name,
+        email,
+        password,
+      }),
     });
 
-    return {
-      success: true,
-    };
-  } catch (error) {
-    console.error("Registration error:", error);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new ApiError(response.status, data.error || "Registration failed");
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error("Registration error:", err);
     return {
       errors: {
-        email: ["An error occurred during registration"],
+        email: [(err as Error).message || "An unexpected error occurred"],
       },
     };
-  } finally {
-    if ((prevState as RegisterState)?.success) {
-      redirect("/login");
-    }
   }
 }
 
